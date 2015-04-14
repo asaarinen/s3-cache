@@ -38,40 +38,65 @@ exports.S3Cache1 = function(deps, s3params, bucketname, cachepath, callback) {
 
     var filecache = {};
 
-    retobj.getFile1 = function(s3path, callback) {
+    retobj.getFile1 = function(s3path, opts, callback) {
+
+        if( typeof opts == 'function' ) {
+            callback = opts;
+            opts = null;
+        }
+        if( !opts )
+            opts = {};
+
         var localpath = cachepath + s3path;
         
         util.log('getFile1 ' + localpath + ' <- ' + s3path);
-        
+
+
+        function tmpGetFile1(filecb) {
+            var tmpfile = null;
+
+            util.waterfall([
+                util.tmp.tmpFileFun('s3-cache.getFile1'),
+                function(_tmpfile, wfcb2) {
+                    tmpfile = _tmpfile;
+                    util.log('downloading ' + s3path + ' to ' + tmpfile.filename());
+                    
+                    wfcb2 = util.safeCallback(wfcb2);
+                        
+                    var s3in = s3.getObject({ 
+                            Bucket: s3.default_bucket, 
+                        Key: s3path 
+                    }).createReadStream();
+                    
+                    var fsout = fs.createWriteStream(tmpfile.filename());
+                    s3in.pipe(fsout);
+                    
+                    s3in.on('error', wfcb2);
+                    fsout.on('error', wfcb2);
+                    fsout.on('close', function() { wfcb2(); });
+                },
+                function(wfcb2) {
+                    wfcb2(null, tmpfile);
+                }
+            ], filecb);
+        }
+
+        if( opts.nocache )
+            return tmpGetFile1(callback);
+
+        var tmpfile = null;
         util.getCached1(filecache, s3path, function(cachecb) {
             fs.exists(localpath, function(exists) {
                 if( exists )
                     return cachecb(null, localpath);
-                
-                var tmpfile = null;
                 util.waterfall([
-                    util.tmp.tmpFileFun('s3-cache.getFile1'),
-                    function(_tmpfile, wfcb2) {
-                        tmpfile = _tmpfile;
-                        util.log('downloading ' + s3path + ' to ' + tmpfile.filename());
-                        
-                        wfcb2 = util.safeCallback(wfcb2);
-                        
-                        var s3in = s3.getObject({ 
-                            Bucket: s3.default_bucket, 
-                            Key: s3path 
-                        }).createReadStream();
-                        
-                        var fsout = fs.createWriteStream(tmpfile.filename());
-                        s3in.pipe(fsout);
-                        
-                        s3in.on('error', wfcb2);
-                        fsout.on('error', wfcb2);
-                        fsout.on('close', function() { wfcb2(); });
+                    function(wfcb) {
+                        tmpGetFile1(wfcb);
                     },
-                    function(wfcb2) {
+                    function(_tmpfile, wfcb) {
+                        tmpfile = _tmpfile;
                         util.log('copying ' + tmpfile.filename() + ' to ' + localpath);
-                        util.fs.copyFileP0(tmpfile.filename(), localpath, wfcb2);
+                        util.fs.copyFileP0(tmpfile.filename(), localpath, wfcb);
                     }
                 ], util.tmp.releaseFun(function() { return tmpfile; }, function(err) {
                     if( err ) {
@@ -84,18 +109,31 @@ exports.S3Cache1 = function(deps, s3params, bucketname, cachepath, callback) {
         }, callback);
     }
     
-    retobj.getFileJSONZip1 = function(s3path, callback) {
+    retobj.getFileJSONZip1 = function(s3path, opts, callback) {
+        if( typeof opts == 'function' ) {
+            callback = opts;
+            opts = null;
+        }
+        if( !opts )
+            opts = {};
+
         util.waterfall([
             function(wfcb) {
-                retobj.getFileZip1(s3path, wfcb);
+                retobj.getFileZip1(s3path, opts, wfcb);
             },
             function(localpath, wfcb) {
-                retobj.getFileJSON1(s3path, wfcb);
+                retobj.getFileJSON1(s3path, opts, wfcb);
             }
         ], callback);
     }
 
-    retobj.getFileZip1 = function(s3path, callback) {
+    retobj.getFileZip1 = function(s3path, opts, callback) {
+        if( typeof opts == 'function' ) {
+            callback = opts;
+            opts = null;
+        }
+        if( !opts )
+            opts = {};
 
         var localpath = cachepath + s3path;
         
@@ -103,39 +141,58 @@ exports.S3Cache1 = function(deps, s3params, bucketname, cachepath, callback) {
         
         util.waterfall([
             function(wfcb) {
-                retobj.getFile1(s3path + '.zip', wfcb);
+                retobj.getFile1(s3path + '.zip', opts, wfcb);
             },
             function(zippath, wfcb) {
                 util.getCached1(filecache, s3path, function(cachecb) {
                     fs.exists(localpath, function(exists) {
                         if( exists )
                             return cachecb(null, localpath);
-                
+                            
                         var basename = path.basename(s3path);
-                        util.fs.unzipFile0(zippath, basename, localpath, function(err) {
+                        util.waterfall([
+                            function(wfcb2) {
+                                if( typeof zippath == 'object' ) 
+                                    util.fs.unzipFile0(zippath.filename(), basename, localpath, 
+                                                       util.tmp.releaseFun(zippath, wfcb2));
+                                else
+                                    util.fs.unzipFile0(zippath, basename, localpath, wfcb2);
+                            }
+                        ], function(err) {
                             if( err ) {
                                 util.log('error unzipping file ' + s3path + '.zip: ' + err);
                                 cachecb(err);
                             } else
                                 cachecb(null, localpath);
                         });
-                    });
+                    });                        
                 }, wfcb);
             }
         ], callback);
     }
     
-    retobj.getFileContent1 = function(s3path, callback) {
+    retobj.getFileContent1 = function(s3path, opts, callback) {
+        if( typeof opts == 'function' ) {
+            callback = opts;
+            opts = null;
+        }
+        if( !opts )
+            opts = {};
         
         util.log('getFileContent1 <- ' + s3path);
         
         util.waterfall([
             function(wfcb) {
-                retobj.getFile1(s3path, wfcb);
+                retobj.getFile1(s3path, opts, wfcb);
             },
             function(localpath, wfcb) {
-                util.log('reading local file ' + localpath);
-                fs.readFile(localpath, wfcb);
+                if( typeof localpath == 'object' ) {
+                    util.log('reading local tmp file ' + localpath.filename());
+                    fs.readFile(localpath.filename(), util.tmp.releaseFun(localpath, wfcb));
+                } else {
+                    util.log('reading local file ' + localpath);
+                    fs.readFile(localpath, wfcb);
+                }
             },
             function(data, wfcb) {
                 //util.log('read local file ' + localpath + ' (' + data.length + ' bytes)');
@@ -144,11 +201,18 @@ exports.S3Cache1 = function(deps, s3params, bucketname, cachepath, callback) {
         ], callback);
     }
     
-    retobj.getFileJSON1 = function(s3path, callback) {
+    retobj.getFileJSON1 = function(s3path, opts, callback) {
+        if( typeof opts == 'function' ) {
+            callback = opts;
+            opts = null;
+        }
+        if( !opts )
+            opts = {};
+
         util.log('getFileJSON1 <- ' + s3path);
         util.waterfall([
             function(wfcb) {
-                retobj.getFileContent1(s3path, wfcb);
+                retobj.getFileContent1(s3path, opts, wfcb);
             },
             function(data, wfcb) {
                 util.log('parsing json data');
@@ -363,7 +427,7 @@ exports.S3Cache1 = function(deps, s3params, bucketname, cachepath, callback) {
                 wfcb();
         },
         function(wfcb) {
-            wfcb(null, util.wrapCallbackMethods(retobj));
+            wfcb(null, retobj);//util.wrapCallbackMethods(retobj));
         }
     ], callback);
 }
