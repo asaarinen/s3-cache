@@ -272,6 +272,7 @@ exports.S3Cache1 = function(deps, s3params, bucketname, cachepath, callback) {
                 util.fs.copyFileP0(tmppath, localpath, wfcb);
             },
             function(wfcb) {
+                util.putCached(filecache, s3path, null, localpath);
                 util.fs.getFileInfo3(localpath, wfcb);
             },
             function(size, hex, base64, wfcb) {

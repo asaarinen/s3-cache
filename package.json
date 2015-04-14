@@ -1,6 +1,6 @@
 {
   "name": "s3-cache",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "simple, locally caching read-write access to files in s3",
   "main": "index.js",
   "repository": {
