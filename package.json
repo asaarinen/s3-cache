@@ -13,6 +13,6 @@
   "dependencies": {
     "async": "~0.9.0",
     "aws-sdk": "~2.1.14",
-    "libutil": "0.0.3"
+    "libutil": "~0.0.4"
   }
 }
